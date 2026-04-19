@@ -208,9 +208,9 @@ class PluginConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.INVOKE_LLM)
         async def invoke_llm(data: dict[str, Any]) -> handler.ActionResponse:
-            timeout = data.pop("timeout", 15.0)
+            timeout = data.pop("timeout", 120.0)
             if not isinstance(timeout, (int, float)) or timeout <= 0:
-                timeout = 15.0
+                timeout = 120.0
 
             result = await self.context.control_handler.call_action(
                 PluginToRuntimeAction.INVOKE_LLM,
@@ -520,7 +520,33 @@ class PluginConnectionHandler(handler.Handler):
         async def list_tools(data: dict[str, Any]) -> handler.ActionResponse:
             tools = await self.context.plugin_mgr.list_tools()
             return handler.ActionResponse.success(
-                {"tools": [tool.model_dump() for tool in tools]}
+                {"tools": [tool.to_plain_dict() for tool in tools]}
+            )
+
+        @self.action(PluginToRuntimeAction.GET_TOOL_DETAIL)
+        async def get_tool_detail(data: dict[str, Any]) -> handler.ActionResponse:
+            tool_name = data["tool_name"]
+            tools = await self.context.plugin_mgr.list_tools()
+            for tool in tools:
+                if tool.metadata.name == tool_name:
+                    return handler.ActionResponse.success(
+                        {"tool": tool.to_plain_dict()}
+                    )
+            return handler.ActionResponse.error(
+                message=f"Tool not found: {tool_name}"
+            )
+
+        @self.action(PluginToRuntimeAction.CALL_TOOL)
+        async def call_tool_from_plugin(data: dict[str, Any]) -> handler.ActionResponse:
+            tool_name = data["tool_name"]
+            tool_parameters = data["tool_parameters"]
+            session = data["session"]
+            query_id = data["query_id"]
+            resp = await self.context.plugin_mgr.call_tool(
+                tool_name, tool_parameters, session, query_id
+            )
+            return handler.ActionResponse.success(
+                {"tool_response": resp}
             )
 
         @self.action(PluginToRuntimeAction.LIST_PLUGINS_MANIFEST)

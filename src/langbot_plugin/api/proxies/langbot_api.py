@@ -84,6 +84,7 @@ class LangBotAPIProxy:
         timeout: float | None = None,
     ) -> provider_message.Message:
         """Invoke an LLM model"""
+        effective_timeout = timeout if timeout is not None else 120.0
         resp = (
             await self.plugin_runtime_handler.call_action(
                 PluginToRuntimeAction.INVOKE_LLM,
@@ -92,8 +93,9 @@ class LangBotAPIProxy:
                     "messages": [m.model_dump() for m in messages],
                     "funcs": [f.model_dump() for f in funcs],
                     "extra_args": extra_args,
+                    "timeout": effective_timeout,
                 },
-                timeout=timeout if timeout is not None else 15.0,
+                timeout=effective_timeout,
             )
         )["message"]
 
@@ -194,13 +196,71 @@ class LangBotAPIProxy:
             )
         )["commands"]
 
-    async def list_tools(self) -> list[str]:
-        """List all tools"""
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools.
+
+        Returns:
+            List of tool info dicts, each containing:
+            - name: Tool name (plugin_author/plugin_name/tool_name format)
+            - label: I18n label dict
+            - description: I18n description dict
+            - parameters: JSON Schema of tool parameters
+            - spec: Full tool spec
+        """
         return (
             await self.plugin_runtime_handler.call_action(
                 PluginToRuntimeAction.LIST_TOOLS, {}
             )
         )["tools"]
+
+    async def get_tool_detail(self, tool_name: str) -> dict[str, Any]:
+        """Get detailed information about a specific tool.
+
+        Args:
+            tool_name: The name of the tool to get details for.
+
+        Returns:
+            Tool detail dict containing name, label, description, parameters, spec.
+
+        Raises:
+            Exception: If the tool is not found.
+        """
+        return (
+            await self.plugin_runtime_handler.call_action(
+                PluginToRuntimeAction.GET_TOOL_DETAIL, {"tool_name": tool_name}
+            )
+        )["tool"]
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        parameters: dict[str, Any],
+        session: dict[str, Any],
+        query_id: int,
+    ) -> dict[str, Any]:
+        """Call a specific tool.
+
+        Args:
+            tool_name: The name of the tool to call.
+            parameters: The parameters to pass to the tool.
+            session: The current session dict.
+            query_id: The current query ID.
+
+        Returns:
+            Tool response dict.
+        """
+        return (
+            await self.plugin_runtime_handler.call_action(
+                PluginToRuntimeAction.CALL_TOOL,
+                {
+                    "tool_name": tool_name,
+                    "tool_parameters": parameters,
+                    "session": session,
+                    "query_id": query_id,
+                },
+                timeout=180,
+            )
+        )["tool_response"]
 
     # ================= RAG Capability APIs =================
 
